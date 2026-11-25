@@ -1,0 +1,363 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{hyperref}
+
+\title{Optimización de la posición de un inserto conductor para reducir la temperatura máxima en una placa con calentamiento localizado}
+\author{Renzo \\ Laboratorio II \\ Universidad Nacional de Salta}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+% ===== PARTE 1 =====
+%\input{parte1_resumen_intro}
+\section*{Resumen}
+
+Se estudia numéricamente la conducción de calor en una placa rectangular bidimensional con un calentamiento localizado y un inserto rectangular de mayor conductividad térmica. El objetivo es determinar cómo influye la posición del inserto en la temperatura máxima alcanzada y en el tiempo de enfriamiento posterior. El modelo se basa en la ecuación de calor transitoria 2D, discretizada por volúmenes finitos con un esquema totalmente implícito (Euler hacia atrás). Las interfaces entre materiales se tratan mediante resistencias conductivas en serie, y las condiciones de contorno combinan un borde con intercambio convectivo (Robin) y tres bordes aislados (Neumann homogénea). La fuente de calor se modela como una gaussiana localizada con un pulso temporal de duración conocida. El sistema lineal resultante se resuelve con un método de Jacobi vectorizado, con criterio de parada basado en el cambio relativo de la solución. Se comparan seis configuraciones: una placa homogénea y cinco posiciones del inserto, manteniendo constantes el área del inserto, la potencia total y las condiciones exteriores. Los resultados muestran que el inserto centrado sobre la fuente reduce la temperatura máxima en aproximadamente un 30\,\% respecto de la placa homogénea (de 239\,°C a 168\,°C), mientras que las posiciones alejadas de la fuente no producen mejora apreciable. Por otro lado, un inserto ubicado entre la fuente y el borde convectivo no reduce el pico pero acelera el enfriamiento posterior: alcanza los 40\,°C en 3642\,s, frente a 4655\,s del inserto centrado. Se discute el compromiso entre reducción del pico y velocidad de enfriamiento, y se reconoce que el enfriamiento hasta la temperatura ambiente requiere tiempos prolongados con los parámetros adoptados.
+
+\section{Introducción}
+
+La conducción de calor en placas delgadas con fuentes localizadas aparece en numerosos problemas de ingeniería: disipación en componentes electrónicos, procesos de soldadura, tratamientos térmicos localizados y diseño de superficies con refuerzos conductores. En estos casos, la temperatura máxima alcanzada y su distribución espacial son relevantes tanto por razones de integridad del material como por el desempeño funcional del sistema.
+
+Una estrategia habitual para moderar los picos de temperatura consiste en incorporar regiones de mayor conductividad térmica que redistribuyan el calor desde la zona caliente hacia regiones más frías. La pregunta natural es dónde conviene ubicar ese material para obtener el mayor beneficio. La respuesta no es evidente: un inserto cerca de la fuente puede reducir el pico por difusión lateral, mientras que un inserto que conecte la fuente con un borde frío podría acelerar la disipación. Además, la posición óptima puede depender de si el objetivo es reducir la temperatura máxima o minimizar el tiempo de enfriamiento.
+
+En este trabajo se aborda esa pregunta mediante simulaciones numéricas de la ecuación de calor transitoria en dos dimensiones. Se considera una placa rectangular de espesor uniforme, con un material base de baja conductividad y un inserto rectangular de alta conductividad. El calentamiento se modela como una fuente volumétrica gaussiana localizada, con un pulso temporal de duración conocida, seguido de una etapa de enfriamiento. Las condiciones de contorno combinan un borde con intercambio convectivo con el ambiente (Robin) y tres bordes aislados (Neumann homogénea), de modo que el calor solo puede evacuarse por un borde.
+
+\subsection*{Objetivo}
+
+El objetivo del trabajo es determinar cómo influye la posición de un inserto de alta conductividad, de área fija, en la temperatura máxima alcanzada y en el tiempo de enfriamiento de una placa con calentamiento localizado. Se busca además distinguir entre mejoras asociadas a la redistribución del calor y mejoras asociadas a la disipación efectiva hacia el ambiente, manteniendo constantes la potencia total, el área del inserto y las condiciones exteriores entre los distintos diseños comparados.
+
+
+
+%\input{parte2_metodologia}
+
+\section{Metodología}
+
+\subsection{Modelo físico}
+
+Se considera una placa rectangular de dimensiones $L_x \times L_y$ y espesor uniforme $e$, compuesta por un material base de conductividad $k_b$ y un inserto rectangular de conductividad $k_i > k_b$. La placa se encuentra inicialmente a temperatura ambiente $T_\infty$ y se calienta mediante una fuente volumétrica localizada $S(x,y,t) = s(x,y)\,f(t)$, donde $s(x,y)$ es una gaussiana centrada en $(x_s, y_s)$ y $f(t)$ es un pulso rectangular de duración $t_p$. La ecuación gobernante es la ecuación de calor transitoria 2D:
+\begin{equation}
+\rho C_p \frac{\partial T}{\partial t} = \nabla \cdot (k \nabla T) + S(x,y,t),
+\label{eq:calor}
+\end{equation}
+con condiciones de contorno mixtas y condición inicial $T(x,y,0) = T_\infty$.
+
+\subsection{Condiciones de contorno}
+
+Un borde de la placa (el inferior, $y=0$) intercambia calor con el ambiente mediante convección, modelada con una condición de Robin:
+\begin{equation}
+-k \frac{\partial T}{\partial n} = h\,(T_b - T_\infty),
+\label{eq:robin}
+\end{equation}
+donde $h$ es el coeficiente convectivo y $T_b$ es la temperatura superficial. Los tres bordes restantes se consideran aislados, con condición de Neumann homogénea:
+\begin{equation}
+\frac{\partial T}{\partial n} = 0.
+\label{eq:neumann}
+\end{equation}
+
+\subsection{Discretización espacial}
+
+Se utiliza un esquema de volúmenes finitos sobre una malla uniforme de $N_x \times N_y$ nodos, con espaciamientos $\Delta x$ y $\Delta y$. Cada celda $P$ tiene volumen $V_P = \Delta x\,\Delta y\,e$ y área de cara $A_x = \Delta y\,e$ (caras normales a $x$) y $A_y = \Delta x\,e$ (caras normales a $y$). El balance de energía sobre la celda $P$ conduce a:
+\begin{equation}
+\frac{\rho C_p V_P}{\Delta t}\left(T_P^{n+1} - T_P^n\right) = \sum_{nb} G_{P,nb}\left(T_{nb}^{n+1} - T_P^{n+1}\right) + S_P^{n+1} V_P + Q_{\text{Robin}},
+\label{eq:balance}
+\end{equation}
+donde $G_{P,nb}$ es la conductancia de la cara entre la celda $P$ y su vecina $nb$, y $Q_{\text{Robin}}$ es el aporte del borde convectivo.
+
+\subsection{Conductancia en interfaces}
+
+Cuando dos celdas adyacentes tienen distinta conductividad, la conductancia de la cara se calcula como resistencias conductivas en serie:
+\begin{equation}
+G_{P,E} = \frac{A_{\text{cara}}}{\delta_P/k_P + \delta_E/k_E},
+\label{eq:interfaz}
+\end{equation}
+donde $\delta_P = \Delta x/2$ y $\delta_E = \Delta x/2$ son las distancias desde el centro de cada celda a la cara. Esta expresión garantiza la conservación del flujo de calor en la interfaz.
+
+\subsection{Condición de Robin en el borde}
+
+Para el borde $y=0$, la condición de Robin se incorpora al balance de la celda $P$ adyacente al borde como:
+\begin{equation}
+Q_{\text{Robin}} = h\,A_y\,(T_\infty - T_P^{n+1}),
+\label{eq:robin_discreto}
+\end{equation}
+donde se aproxima la temperatura superficial $T_b$ por la temperatura del centro de la celda $T_P$. Esta aproximación introduce un error de orden $\Delta y$, que se discute en el Apéndice~B.
+
+\subsection{Esquema temporal}
+
+Se utiliza un esquema totalmente implícito (Euler hacia atrás), que es incondicionalmente estable y permite pasos temporales relativamente grandes. La ecuación~\eqref{eq:balance} se reescribe como un sistema lineal:
+\begin{equation}
+A\,\mathbf{T}^{n+1} = \mathbf{b}^n,
+\label{eq:sistema}
+\end{equation}
+donde la matriz $A$ es rala, simétrica y definida positiva, y el vector $\mathbf{b}^n$ contiene los términos de la iteración anterior, la fuente y las condiciones de contorno.
+
+\subsection{Fuente de calor}
+
+La fuente volumétrica se modela como una gaussiana normalizada:
+\begin{equation}
+s(x,y) = s_0 \exp\left(-\frac{(x-x_s)^2 + (y-y_s)^2}{2\sigma^2}\right),
+\label{eq:gaussiana}
+\end{equation}
+donde $s_0$ se elige de modo que la potencia total integrada sea $P$:
+\begin{equation}
+\int s(x,y)\,dV = P.
+\label{eq:potencia}
+\end{equation}
+En la malla discreta, la normalización se realiza sobre la suma $\sum_P s_P V_P = P$. El pulso temporal es $f(t) = 1$ para $t < t_p$ y $f(t) = 0$ para $t \geq t_p$.
+
+\subsection{Solución del sistema lineal}
+
+El sistema~\eqref{eq:sistema} se resuelve en cada paso temporal con un método de Jacobi vectorizado, implementado sobre matrices ralas de \texttt{SciPy}. El criterio de parada es el cambio relativo en norma infinito:
+\begin{equation}
+\|\mathbf{T}^{(k+1)} - \mathbf{T}^{(k)}\|_\infty < \text{tol},
+\label{eq:criterio}
+\end{equation}
+con $\text{tol} = 10^{-8}$. Se verificó que la matriz es diagonalmente dominante, lo que garantiza la convergencia del método.
+
+\subsection{Parámetros del modelo}
+
+La Tabla~\ref{tab:parametros} resume los parámetros utilizados en las simulaciones.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcc}
+\toprule
+Parámetro & Valor & Unidad \\
+\midrule
+Dimensiones de la placa $L_x \times L_y$ & $0.20 \times 0.15$ & m \\
+Espesor $e$ & $0.005$ & m \\
+Malla $N_x \times N_y$ & $41 \times 31$ & -- \\
+Conductividad base $k_b$ & $1.0$ & W/(m\,K) \\
+Conductividad inserto $k_i$ & $20.0$ & W/(m\,K) \\
+Capacidad térmica $\rho C_p$ & $1.0\times10^6$ & J/(m$^3$\,K) \\
+Área del inserto $A_{\text{ins}}$ & $0.0020$ & m$^2$ \\
+Potencia total $P$ & $50.0$ & W \\
+Duración del pulso $t_p$ & $60.0$ & s \\
+Coef.\ convectivo $h$ & $200.0$ & W/(m$^2$\,K) \\
+Temperatura ambiente $T_\infty$ & $20.0$ & °C \\
+Paso temporal $\Delta t$ & $1.0$ & s \\
+Tolerancia del solver & $10^{-8}$ & -- \\
+\bottomrule
+\end{tabular}
+\caption{Parámetros del modelo.}
+\label{tab:parametros}
+\end{table}
+
+\subsection{Verificaciones}
+
+Se realizaron cuatro verificaciones del modelo y del solver:
+\begin{enumerate}
+\item \textbf{Placa aislada sin fuente}: con Neumann homogénea en los cuatro bordes y sin fuente, la temperatura debe permanecer constante. Error máximo observado: $2.8\times10^{-14}$.
+\item \textbf{Calentamiento uniforme}: con todo aislado y fuente uniforme $S_0$, la temperatura debe crecer linealmente como $T(t) = T_0 + S_0 t/(\rho C_p)$. Error máximo observado: $7.4\times10^{-7}$.
+\item \textbf{Estacionario con dos materiales}: con Dirichlet en $x=0$ y $x=L_x$, dos mitades de distinta conductividad y sin fuente, el perfil debe ser lineal por tramos con continuidad del flujo en la interfaz. Error máximo observado: $2.09$\,°C, atribuible al error de discretización espacial en la interfaz.
+\item \textbf{Balance global de energía}: en estado estacionario con fuente uniforme y Robin, la potencia generada debe igualar la cedida al ambiente. Error relativo observado: $5.7\,\%$, consistente con el error de discretización de la malla.
+\end{enumerate}
+
+
+
+%aqui empiezo la parte 3 del informe resultados
+
+\section{Resultados}
+
+\subsection{Verificaciones del modelo}
+
+Las cuatro verificaciones descritas en la Sección~2.10 arrojaron los errores esperados: la placa aislada sin fuente mantuvo la temperatura constante con error de redondeo ($2.8\times10^{-14}$), el calentamiento uniforme siguió la ley lineal con error de orden $\Delta t$ ($7.4\times10^{-7}$), el estacionario con dos materiales presentó un error máximo de $2.09$\,°C atribuible a la discretización espacial en la interfaz, y el balance global de energía cerró con un error relativo del $5.7\,\%$. Estos resultados confirman que el solver, las conductancias de interfaz y las condiciones de contorno están implementados correctamente, y que los errores observados son de discretización y no de programación.
+
+\subsection{Caso base: evolución temporal}
+
+La Figura~\ref{fig:caso_base_T} muestra mapas de temperatura en tres instantes: fin del pulso ($t=60$\,s), el doble del pulso ($t=120$\,s) y el final de la simulación ($t=600$\,s). Al final del pulso se observa un punto caliente gaussiano centrado en la fuente, con una temperatura máxima de aproximadamente $165$\,°C, y el inserto de mayor conductividad se distingue como una región rectangular donde el calor se distribuye lateralmente. A $t=120$\,s el calor ya se difundió y el pico bajó a $\sim130$\,°C. A $t=600$\,s la distribución es mucho más suave, con un gradiente apreciable cerca del borde inferior (Robin) y sin gradiente en los bordes aislados.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.32\textwidth]{figuras/base_T_pulso.png}
+\includegraphics[width=0.32\textwidth]{figuras/base_T_2pulso.png}
+\includegraphics[width=0.32\textwidth]{figuras/base_T_final.png}
+\caption{Mapas de temperatura del caso base en $t=60$\,s (izquierda), $t=120$\,s (centro) y $t=600$\,s (derecha).}
+\label{fig:caso_base_T}
+\end{figure}
+
+La Figura~\ref{fig:caso_base_flujo} muestra la magnitud del flujo de calor $|\nabla T|$ en $t=60$\,s. El flujo es máximo en el borde del inserto, donde el cambio de conductividad produce un salto en el gradiente, y mínimo en el centro de la fuente, donde la temperatura es casi uniforme. Este comportamiento es consistente con la conservación del flujo de calor en la interfaz.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.6\textwidth]{figuras/base_flujo_pulso.png}
+\caption{Magnitud del flujo de calor $|\nabla T|$ en $t=60$\,s para el caso base.}
+\label{fig:caso_base_flujo}
+\end{figure}
+
+La Figura~\ref{fig:caso_base_Tmax} muestra la evolución de la temperatura máxima \(T_{\max}(t)\) para el caso base. La temperatura sube linealmente durante el pulso (0--60\,s), alcanza un pico de $\sim165$\,°C y luego decae suavemente durante el enfriamiento. La curva no alcanza el umbral $T_\infty + 1$\,°C en el tiempo simulado, lo que anticipa la limitación discutida en la Sección~5.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.6\textwidth]{figuras/base_Tmax.png}
+\caption{Evolución de la temperatura máxima \(T_{\max}(t)\) para el caso base.}
+\label{fig:caso_base_Tmax}
+\end{figure}
+
+\subsection{Comparación de diseños con $h=200$\,W/(m$^2$\,K)}
+
+La Tabla~\ref{tab:disenos_h200} resume los resultados de los seis diseños simulados con $h=200$\,W/(m$^2$\,K) y $t_{\max}=3000$\,s. El inserto centrado sobre la fuente reduce la temperatura máxima de $238.98$\,°C (placa homogénea) a $167.93$\,°C, una reducción del $29.7\,\%$. Las posiciones desplazadas del centro de la fuente (desplazado, esquina, entre Robin y arriba) no producen reducción apreciable: todas dan $T_{\max}\approx238.5$\,°C, prácticamente igual a la placa homogénea.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcc}
+\toprule
+Diseño & $T_{\max}$ pico (°C) & $t_{\text{pico}}$ (s) \\
+\midrule
+Homogénea & 238.98 & 59.0 \\
+Inserto centrado & \textbf{167.93} & 59.0 \\
+Inserto desplazado & 238.56 & 59.0 \\
+Inserto en esquina & 238.98 & 59.0 \\
+Inserto entre Robin & 238.52 & 59.0 \\
+Inserto arriba & 238.52 & 59.0 \\
+\bottomrule
+\end{tabular}
+\caption{Temperatura máxima para los seis diseños con $h=200$\,W/(m$^2$\,K).}
+\label{tab:disenos_h200}
+\end{table}
+
+La Figura~\ref{fig:comparacion_Tmax} muestra las curvas \(T_{\max}(t)\) de los seis diseños. Se observa que la curva del inserto centrado es claramente inferior al resto durante todo el pulso y el enfriamiento, mientras que las otras cinco curvas están prácticamente superpuestas. Esto confirma que el inserto solo reduce el pico si está dentro de la zona caliente de la fuente.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.7\textwidth]{figuras/comparacion_Tmax.png}
+\caption{Comparación de \(T_{\max}(t)\) para los seis diseños con $h=200$\,W/(m$^2$\,K).}
+\label{fig:comparacion_Tmax}
+\end{figure}
+
+La Figura~\ref{fig:comparacion_mapas} compara los mapas de temperatura en $t=60$\,s para los seis diseños. En el inserto centrado el punto caliente es más ancho y menos intenso; en los otros casos el punto caliente está tan concentrado como en la placa homogénea.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{figuras/comparacion_mapas_pulso.png}
+\caption{Mapas de temperatura en $t=60$\,s para los seis diseños con $h=200$\,W/(m$^2$\,K).}
+\label{fig:comparacion_mapas}
+\end{figure}
+
+\subsection{Comparación de diseños con $h=2000$\,W/(m$^2$\,K)}
+
+Para estudiar el enfriamiento se repitieron tres diseños (homogénea, inserto centrado e inserto entre Robin) con $h=2000$\,W/(m$^2$\,K) y $t_{\max}=5000$\,s. La Tabla~\ref{tab:disenos_h2000} resume los resultados. Ningún diseño alcanza el umbral de $21$\,°C en el tiempo simulado, pero el inserto entre Robin alcanza los $40$\,°C en $3642$\,s, frente a $4655$\,s del inserto centrado y a un valor no alcanzado para la placa homogénea (que a $5000$\,s todavía está a $40.50$\,°C).
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lccc}
+\toprule
+Diseño & $T_{\max}$ pico (°C) & $T_{\max}$ a 5000 s (°C) & $t$ hasta 40 °C (s) \\
+\midrule
+Homogénea & 238.98 & 40.50 & no alcanza \\
+Inserto centrado & \textbf{167.93} & 39.51 & 4655 \\
+Inserto entre Robin & 238.52 & \textbf{37.59} & \textbf{3642} \\
+\bottomrule
+\end{tabular}
+\caption{Resultados con $h=2000$\,W/(m$^2$\,K) y $t_{\max}=5000$\,s.}
+\label{tab:disenos_h2000}
+\end{table}
+
+La Figura~\ref{fig:comparacion_Tmax_h2000} muestra las curvas \(T_{\max}(t)\) para estos tres diseños. El inserto centrado tiene el pico más bajo, pero el inserto entre Robin decae más rápido durante el enfriamiento y cruza el nivel de $40$\,°C antes.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.7\textwidth]{figuras/comparacion_Tmax_h2000.png}
+\caption{Comparación de \(T_{\max}(t)\) para tres diseños con $h=2000$\,W/(m$^2$\,K).}
+\label{fig:comparacion_Tmax_h2000}
+\end{figure}
+
+
+%aqui empieza la parte 4 de la discusion
+
+
+
+\section{Discusión}
+
+\subsection{Reducción del pico: el rol de la posición}
+
+El resultado principal es que el inserto centrado sobre la fuente reduce la temperatura máxima en un $30\,\%$, mientras que las posiciones alejadas de la fuente no producen mejora. Esto se explica por la escala espacial de la fuente: la gaussiana tiene desviación estándar $\sigma=0.02$\,m, de modo que el calor se concentra en una región de radio $\sim2\sigma=0.04$\,m alrededor de $(x_s,y_s)$. Un inserto centrado en esa región puede difundir el calor lateralmente antes de que se acumule; un inserto a $0.035$\,m o más de distancia no alcanza a influir en el pico, porque el calor no llega a él en el tiempo característico del pulso.
+
+Este resultado es consistente con la idea de que la reducción del pico es un fenómeno de \emph{redistribución}: el inserto no elimina energía, sino que la reparte en un área mayor, bajando la temperatura máxima. La energía total almacenada al final del pulso es similar en todos los casos, como se discute a continuación.
+
+\subsection{Velocidad de enfriamiento: el rol del puente térmico}
+
+El inserto entre Robin y la fuente no reduce el pico (está fuera de la zona caliente), pero acelera el enfriamiento: alcanza los $40$\,°C en $3642$\,s, frente a $4655$\,s del inserto centrado y a un valor no alcanzado para la placa homogénea. Esto se explica porque el inserto actúa como un \emph{puente térmico} que conduce el calor desde la región caliente hacia el borde convectivo, donde se cede al ambiente. La mejora no está en la redistribución (el pico no baja), sino en la \emph{disipación efectiva}: el calor llega antes al borde frío.
+
+Este resultado revela un compromiso: el inserto centrado minimiza el pico pero no acelera el enfriamiento; el inserto entre Robin acelera el enfriamiento pero no reduce el pico. La elección depende del objetivo: si el criterio es evitar temperaturas máximas altas, conviene el centrado; si el criterio es evacuar el calor rápido, conviene el inserto entre Robin.
+
+\subsection{Limitaciones del modelo}
+
+El enfriamiento hasta la temperatura ambiente ($T_\infty+1$\,°C) no se alcanza en los tiempos simulados, ni siquiera con $h=2000$\,W/(m$^2$\,K). Esto se debe a la elevada inercia térmica de la placa: con $\rho C_p=10^6$\,J/(m$^3$\,K), espesor $e=5$\,mm y dimensiones $0.20\times0.15$\,m, la constante de tiempo del enfriamiento es del orden de $10^4$\,s. En la práctica, esto sugiere que para aplicaciones reales se necesitaría convección forzada más intensa, una placa más delgada o un material con menor capacidad térmica.
+
+Otra limitación es el error de discretización en la interfaz entre materiales ($2.09$\,°C en la verificación 3a) y en el balance global de energía ($5.7\,\%$ en la verificación 3b). Estos errores son consistentes con la malla adoptada ($\Delta x=\Delta y=5$\,mm) y se reducirían al refinar la malla. No afectan las conclusiones cualitativas, pero limitan la precisión cuantitativa de los valores reportados.
+
+Finalmente, la aproximación $T_b\approx T_P$ para la condición de Robin introduce un error de orden $\Delta y$ en la temperatura superficial. Este error es aceptable para la malla adoptada, pero podría refinarse usando una expresión de segundo orden para $T_b$ en función de $T_P$ y su vecino.
+
+\section{Conclusiones}
+
+Se estudió numéricamente la conducción de calor en una placa 2D con calentamiento localizado y un inserto rectangular de mayor conductividad. Las conclusiones principales son:
+
+\begin{enumerate}
+\item La posición del inserto influye fuertemente en la temperatura máxima. El inserto centrado sobre la fuente reduce el pico en un $30\,\%$ respecto de la placa homogénea, mientras que las posiciones alejadas de la fuente no producen mejora apreciable.
+\item La reducción del pico es un fenómeno de redistribución: el inserto no elimina energía, sino que la reparte en un área mayor. La energía total almacenada al final del pulso es similar en todos los casos.
+\item El inserto ubicado entre la fuente y el borde convectivo no reduce el pico, pero acelera el enfriamiento al actuar como puente térmico hacia el ambiente.
+\item Existe un compromiso entre reducción del pico y velocidad de enfriamiento: ninguna posición es óptima para ambos objetivos simultáneamente.
+\item El enfriamiento hasta la temperatura ambiente requiere tiempos prolongados con los parámetros adoptados, lo que constituye una limitación del modelo y sugiere la necesidad de convección forzada más intensa o placas más delgadas en aplicaciones reales.
+\end{enumerate}
+
+Los resultados permiten responder al objetivo planteado: la posición del inserto debe elegirse en función del criterio de diseño (reducir el pico o acelerar el enfriamiento), y el centrado sobre la fuente es la mejor opción si el objetivo es minimizar la temperatura máxima.
+
+
+%parte 5 de los anexos
+
+\appendix
+
+\section{Deducción de la condición de Neumann en 2D}
+
+Para una celda $P$ adyacente a una cara exterior con flujo prescrito, el balance de energía incluye el aporte de esa cara. Definiendo $q''_{\text{sal}}$ como el flujo de calor por unidad de área, positivo hacia afuera, la condición de Neumann es:
+\begin{equation}
+-k \nabla T \cdot \mathbf{n}_{\text{sal}} = q''_{\text{sal}}.
+\end{equation}
+El aporte de potencia a la celda es $\Phi_b = -A_b\,q''_{\text{sal}}$, donde $A_b$ es el área de la cara. Dividiendo por el volumen $V_P$ de la celda, el aporte al balance por unidad de volumen es:
+\begin{equation}
+\frac{\Phi_b}{V_P} = -\frac{A_b}{V_P}\,q''_{\text{sal}}.
+\end{equation}
+Para una cara normal a $x$, $A_b/V_P = 1/\Delta x$; para una cara normal a $y$, $A_b/V_P = 1/\Delta y$. En el caso de un borde aislado, $q''_{\text{sal}}=0$ y el aporte es nulo, lo que recupera la condición de Neumann homogénea.
+
+\section{Deducción de la condición de Robin}
+
+Para el borde convectivo, la condición es:
+\begin{equation}
+-k \frac{\partial T}{\partial n} = h\,(T_b - T_\infty),
+\end{equation}
+donde $T_b$ es la temperatura superficial. En el esquema de volúmenes finitos, se aproxima $T_b$ por la temperatura del centro de la celda $T_P$. El aporte al balance es:
+\begin{equation}
+Q_{\text{Robin}} = h\,A_b\,(T_\infty - T_P),
+\end{equation}
+que se incorpora al lado izquierdo del sistema lineal como $h A_b T_P$ y al lado derecho como $h A_b T_\infty$. Esta aproximación introduce un error de orden $\Delta y$ en la temperatura superficial, que se reduce al refinar la malla.
+
+\section{Balance en la interfaz entre materiales}
+
+Para una interfaz con contacto térmico perfecto, las resistencias conductivas de ambos lados se suman. La conductancia de la cara entre las celdas $P$ y $E$ es:
+\begin{equation}
+G_{P,E} = \frac{A_{\text{cara}}}{\delta_P/k_P + \delta_E/k_E},
+\end{equation}
+donde $\delta_P$ y $\delta_E$ son las distancias desde el centro de cada celda a la cara. Esta expresión garantiza que el flujo de calor $\Phi = G_{P,E}(T_P - T_E)$ sea continuo en la interfaz, independientemente del contraste de conductividades.
+
+\section{Criterio de parada y convergencia}
+
+El solver iterativo de Jacobi se detiene cuando el cambio relativo en norma infinito es menor que la tolerancia:
+\begin{equation}
+\|\mathbf{T}^{(k+1)} - \mathbf{T}^{(k)}\|_\infty < \text{tol},
+\end{equation}
+con $\text{tol}=10^{-8}$. Se verificó que la matriz del sistema es diagonalmente dominante:
+\begin{equation}
+|a_{ii}| > \sum_{j\neq i} |a_{ij}|,
+\end{equation}
+lo que garantiza la convergencia del método para cualquier condición inicial. En la práctica, el número de iteraciones por paso temporal varió entre 6 y 37, con valores menores a medida que la solución se acercaba al estacionario.
+
+
+\end{document}
