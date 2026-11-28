@@ -1,4 +1,4 @@
-# TP Final Laboratorio II - Conducción de calor en placa 2D
+# TP Final Laboratorio II - Conducción de calor en placa 2D  ( Primera entrega ) 
 
 Trabajo final de la materia Laboratorio II (UNSa). Simulación numérica de la conducción de calor en una placa 2D no homogénea con un inserto conductor, para analizar el efecto de la posición del inserto en la temperatura máxima y el enfriamiento.
 
